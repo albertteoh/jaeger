@@ -26,18 +26,20 @@ import (
 
 // Config describes the test scenario.
 type Config struct {
-	Workers  int
-	Traces   int
-	Marshal  bool
-	Debug    bool
-	Firehose bool
-	Pause    time.Duration
-	Duration time.Duration
-	Service  string
+	MetricsPort int
+	Workers     int
+	Traces      int
+	Marshal     bool
+	Debug       bool
+	Firehose    bool
+	Pause       time.Duration
+	Duration    time.Duration
+	Service     string
 }
 
 // Flags registers config flags.
 func (c *Config) Flags(fs *flag.FlagSet) {
+	fs.IntVar(&c.MetricsPort, "metrics-port", 59077, "Port to listen for metrics")
 	fs.IntVar(&c.Workers, "workers", 1, "Number of workers (goroutines) to run")
 	fs.IntVar(&c.Traces, "traces", 1, "Number of traces to generate in each worker (ignored if duration is provided")
 	fs.BoolVar(&c.Marshal, "marshal", false, "Whether to marshal trace context via HTTP headers")

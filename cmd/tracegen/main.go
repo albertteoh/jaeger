@@ -16,6 +16,9 @@ package main
 
 import (
 	"flag"
+	"github.com/jaegertracing/jaeger/cmd/flags"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"time"
 
 	"github.com/opentracing/opentracing-go"
@@ -34,13 +37,26 @@ func main() {
 	cfg := new(tracegen.Config)
 	cfg.Flags(fs)
 	flag.Parse()
+	svc := flags.NewService(cfg.MetricsPort)
+	svc.NoStorage = true
+
+	v := viper.New()
+	svc.AddFlags(fs)
+
+	// Starts HTTP server listening on "/metrics" endpoint
+	var command = &cobra.Command{}
+	command.Flags().AddGoFlagSet(fs)
+	v.BindPFlags(command.Flags())
+	if err := svc.Start(v); err != nil {
+		panic("failed to start service!")
+	}
 
 	metricsFactory := prometheus.New()
 	traceCfg := &jaegerConfig.Configuration{
 		ServiceName: cfg.Service,
 		Sampler: &jaegerConfig.SamplerConfig{
-			Type:  "const",
-			Param: 1,
+			Type:                    "remote",
+			SamplingRefreshInterval: time.Millisecond,
 		},
 		RPCMetrics: true,
 	}
@@ -65,4 +81,5 @@ func main() {
 
 	logger.Info("Waiting 1.5sec for metrics to flush")
 	time.Sleep(3 * time.Second / 2)
+
 }
