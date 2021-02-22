@@ -80,8 +80,12 @@ func (s *ServiceOperationStorage) Write(indexName string, jsonSpan *dbmodel.Span
 func (s *ServiceOperationStorage) getServices(context context.Context, indices []string, maxDocCount int) ([]string, error) {
 	serviceAggregation := getServicesAggregation(maxDocCount)
 
+	// This query object is built just for logging and can't be used in the Search call because
+	// SearchService does not offer the means to set and execute on a query source.
+	q := getAggQuery(nil, servicesAggregation, serviceAggregation)
+	logQuery(s.logger, q)
+
 	searchService := s.client.Search(indices...).
-		Size(0). // set to 0 because we don't want actual documents.
 		IgnoreUnavailable(true).
 		Aggregation(servicesAggregation, serviceAggregation)
 
@@ -110,8 +114,12 @@ func (s *ServiceOperationStorage) getOperations(context context.Context, indices
 	serviceQuery := elastic.NewTermQuery(serviceName, service)
 	serviceFilter := getOperationsAggregation(maxDocCount)
 
+	// This query object is built just for logging and can't be used in the Search call because
+	// SearchService does not offer the means to set and execute on a query source.
+	q := getAggQuery(serviceQuery, operationsAggregation, serviceFilter)
+	logQuery(s.logger, q)
+
 	searchService := s.client.Search(indices...).
-		Size(0).
 		Query(serviceQuery).
 		IgnoreUnavailable(true).
 		Aggregation(operationsAggregation, serviceFilter)
@@ -135,6 +143,18 @@ func getOperationsAggregation(maxDocCount int) elastic.Query {
 	return elastic.NewTermsAggregation().
 		Field(operationNameField).
 		Size(maxDocCount) // ES deprecated size omission for aggregating all. https://github.com/elastic/elasticsearch/issues/18838
+}
+
+func getAggQuery(termQuery elastic.Query, aggName string, agg elastic.Query) *elastic.SearchSource {
+
+	s := elastic.NewSearchSource().
+		Size(0). // as this is an aggregation query, set to 0 because we don't want actual documents.
+		Aggregation(aggName, agg)
+
+	if termQuery != nil {
+		return s.Query(termQuery)
+	}
+	return s
 }
 
 func hashCode(s dbmodel.Service) string {

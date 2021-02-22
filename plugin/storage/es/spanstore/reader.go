@@ -169,6 +169,7 @@ func getSourceFn(archive bool, maxDocCount int) sourceFn {
 			s.Sort("startTime", true).
 				SearchAfter(nextTime)
 		}
+
 		return s
 	}
 }
@@ -346,11 +347,12 @@ func (s *SpanReader) multiRead(ctx context.Context, traceIDs []model.TraceID, st
 				nextTime = val
 			}
 
-			s := s.sourceFn(query, nextTime)
+			ss := s.sourceFn(query, nextTime)
+			logQuery(s.logger, ss)
 
 			searchRequests[i] = elastic.NewSearchRequest().
 				IgnoreUnavailable(true).
-				Source(s)
+				Source(ss)
 		}
 		// set traceIDs to empty
 		traceIDs = nil
@@ -395,6 +397,13 @@ func (s *SpanReader) multiRead(ctx context.Context, traceIDs []model.TraceID, st
 		traces = append(traces, trace)
 	}
 	return traces, nil
+}
+
+func logQuery(logger *zap.Logger, query *elastic.SearchSource) {
+	// Ignore errors since we're only debug logging and should not prevent queries from being executed.
+	qMap, _ := query.Source()
+	qJson, _ := json.Marshal(qMap)
+	logger.Debug("Querying elasticsearch", zap.String("query", string(qJson)))
 }
 
 func buildTraceByIDQuery(traceID model.TraceID) elastic.Query {
