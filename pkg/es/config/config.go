@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/drael/GOnetstat"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -121,6 +122,10 @@ func (c *Configuration) NewClient(logger *zap.Logger, metricsFactory metrics.Fac
 		return nil, err
 	}
 	fmt.Printf("[DEBUG] rawClient=%+v\n", rawClient)
+	tcpData := GOnetstat.Tcp()
+	for _, td := range tcpData {
+		fmt.Printf("[DEBUG]: tcpdata: %+v\n", td)
+	}
 
 	sm := storageMetrics.NewWriteMetrics(metricsFactory, "bulk_index")
 	m := sync.Map{}
