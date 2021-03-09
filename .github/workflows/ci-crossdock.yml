@@ -2,7 +2,7 @@ name: CIT Crossdock
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, master-test-ci-elasticsearch, fix-archive-flag-init-defaults-1 ]
   pull_request:
     branches: [ master ]
 
