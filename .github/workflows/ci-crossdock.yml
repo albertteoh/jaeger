@@ -42,4 +42,4 @@ jobs:
 
     - name: Output crossdock logs
       run: make crossdock-logs
-      if: ${{ failure() }}
+#      if: ${{ failure() }}
