@@ -2,7 +2,7 @@ name: CIT Elasticsearch
 
 on:
   push:
-    branches: [ master, master-test-ci-elasticsearch ]
+    branches: [ master]
   pull_request:
     branches: [ master ]
 
@@ -14,10 +14,10 @@ jobs:
         version:
         - major: 5.x
           image: 5.6.16
-#        - major: 6.x
-#          image: 6.8.2
-#        - major: 7.x
-#          image: 7.3.0
+        - major: 6.x
+          image: 6.8.2
+        - major: 7.x
+          image: 7.3.0
     name: elasticsearch ${{ matrix.version.major }}
     steps:
     - uses: actions/checkout@v2
