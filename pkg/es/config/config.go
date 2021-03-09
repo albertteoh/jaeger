@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -116,8 +117,10 @@ func (c *Configuration) NewClient(logger *zap.Logger, metricsFactory metrics.Fac
 
 	rawClient, err := elastic.NewClient(options...)
 	if err != nil {
+		fmt.Printf("[DEBUG] NewClient error=%+v\n", err)
 		return nil, err
 	}
+	fmt.Printf("[DEBUG] rawClient=%+v\n", rawClient)
 
 	sm := storageMetrics.NewWriteMetrics(metricsFactory, "bulk_index")
 	m := sync.Map{}

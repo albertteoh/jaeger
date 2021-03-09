@@ -91,7 +91,7 @@ func TestBearTokenPropagation(t *testing.T) {
 	// Run elastic search mocked server in background..
 	// is not a full server, just mocked the necessary stuff for this test.
 	fmt.Println(time.Now().UnixNano(), "[TestBearTokenPropagation] Stalling http server start...")
-	time.Sleep(10 * time.Second)
+	time.Sleep(30 * time.Second)
 	fmt.Println(time.Now().UnixNano(), "[TestBearTokenPropagation] Starting http server listening on localhost:9200")
 	srv := &http.Server{Addr: ":9200"}
 	defer srv.Shutdown(context.Background())
