@@ -21,8 +21,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/drael/GOnetstat"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -122,10 +122,7 @@ func (c *Configuration) NewClient(logger *zap.Logger, metricsFactory metrics.Fac
 		return nil, err
 	}
 	fmt.Printf("[DEBUG] rawClient=%+v\n", rawClient)
-	tcpData := GOnetstat.Tcp()
-	for _, td := range tcpData {
-		fmt.Printf("[DEBUG]: tcpdata: %+v\n", td)
-	}
+	rawConnect("127.0.0.1", []string{"9200"})
 
 	sm := storageMetrics.NewWriteMetrics(metricsFactory, "bulk_index")
 	m := sync.Map{}
@@ -193,6 +190,20 @@ func (c *Configuration) NewClient(logger *zap.Logger, metricsFactory metrics.Fac
 	}
 
 	return eswrapper.WrapESClient(rawClient, service, c.Version), nil
+}
+
+func rawConnect(host string, ports []string) {
+	for _, port := range ports {
+		timeout := time.Second
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), timeout)
+		if err != nil {
+			fmt.Println("Connecting error:", err)
+		}
+		if conn != nil {
+			defer conn.Close()
+			fmt.Println("Opened", net.JoinHostPort(host, port))
+		}
+	}
 }
 
 // ApplyDefaults copies settings from source unless its own value is non-zero.
