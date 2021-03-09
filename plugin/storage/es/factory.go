@@ -89,8 +89,10 @@ func (f *Factory) Initialize(metricsFactory metrics.Factory, logger *zap.Logger)
 	}
 	f.primaryClient = primaryClient
 	if f.archiveConfig.IsStorageEnabled() {
+		fmt.Printf("creating new ES archive client\n")
 		f.archiveClient, err = f.archiveConfig.NewClient(logger, metricsFactory)
 		if err != nil {
+			fmt.Printf("Error returned creating archive %w\n", err)
 			return fmt.Errorf("failed to create archive Elasticsearch client: %w", err)
 		}
 	}
