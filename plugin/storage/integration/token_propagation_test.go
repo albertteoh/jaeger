@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 const bearerToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbiIsIm5hbWUiOiJKb2huIERvZSIsImlhdCI"
@@ -38,7 +39,7 @@ type esTokenPropagationTestHandler struct {
 
 func (h *esTokenPropagationTestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	fmt.Println("[TestBearTokenPropagation] Mock handling request: ", r)
+	fmt.Println(time.Now().UnixNano(), "[TestBearTokenPropagation] Mock handling request: ", r)
 	authValue := r.Header.Get("Authorization")
 	if authValue != "" {
 		headerValue := strings.Split(authValue, " ")
@@ -89,7 +90,9 @@ func TestBearTokenPropagation(t *testing.T) {
 
 	// Run elastic search mocked server in background..
 	// is not a full server, just mocked the necessary stuff for this test.
-	fmt.Println("[TestBearTokenPropagation] Starting http server listening on localhost:9200")
+	fmt.Println(time.Now().UnixNano(), "[TestBearTokenPropagation] Stalling http server start...")
+	time.Sleep(10 * time.Second)
+	fmt.Println(time.Now().UnixNano(), "[TestBearTokenPropagation] Starting http server listening on localhost:9200")
 	srv := &http.Server{Addr: ":9200"}
 	defer srv.Shutdown(context.Background())
 
@@ -97,7 +100,7 @@ func TestBearTokenPropagation(t *testing.T) {
 
 	// Test cases.
 	for _, testCase := range testCases {
-		fmt.Println("[TestBearTokenPropagation] running test case: ", testCase)
+		fmt.Println(time.Now().UnixNano(), "[TestBearTokenPropagation] running test case: ", testCase)
 		// Ask for services query, this should return 200
 		req, err := http.NewRequest("GET", queryUrl, nil)
 		require.NoError(t, err)
