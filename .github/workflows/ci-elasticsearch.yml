@@ -2,7 +2,7 @@ name: CIT Elasticsearch
 
 on:
   push:
-    branches: [ warn-esc-missing-tmp ]
+    branches: [ master ]
   pull_request:
     branches: [ master ]
 
