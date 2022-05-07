@@ -32,6 +32,7 @@ import (
 	"github.com/olivere/elastic"
 	"github.com/uber/jaeger-lib/metrics"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zapgrpc"
 
 	"github.com/jaegertracing/jaeger/pkg/bearertoken"
@@ -458,26 +459,38 @@ func addLoggerOptions(options []elastic.ClientOptionFunc, logLevel string) ([]el
 	// e.g. --log-level=info and --es.log-level=debug would mute ES's debug logging and would require --log-level=debug
 	// to show ES debug logs.
 	prodConfig := zap.NewProductionConfig()
-	prodConfig.Level.SetLevel(zap.DebugLevel)
+	var lvl zapcore.Level
+	var setLogger func(logger elastic.Logger) elastic.ClientOptionFunc
+	var loggerOpts []zapgrpc.Option
 
+	switch logLevel {
+	case "debug":
+		setLogger = elastic.SetTraceLog
+		lvl = zap.DebugLevel
+
+		// Enables the "level":"debug" log field. Without this,
+		// the "level" field defaults to "info".
+		loggerOpts = append(loggerOpts, zapgrpc.WithDebug())
+	case "info":
+		setLogger = elastic.SetInfoLog
+		lvl = zap.InfoLevel
+	case "error":
+		setLogger = elastic.SetErrorLog
+		lvl = zap.ErrorLevel
+	default:
+		return options, fmt.Errorf("unrecognized log-level: \"%s\"", logLevel)
+	}
+
+	prodConfig.Level.SetLevel(lvl)
 	esLogger, err := prodConfig.Build()
 	if err != nil {
 		return options, err
 	}
 
 	// Elastic client requires a "Printf"-able logger.
-	l := zapgrpc.NewLogger(esLogger)
-	switch logLevel {
-	case "debug":
-		l = zapgrpc.NewLogger(esLogger, zapgrpc.WithDebug())
-		options = append(options, elastic.SetTraceLog(l))
-	case "info":
-		options = append(options, elastic.SetInfoLog(l))
-	case "error":
-		options = append(options, elastic.SetErrorLog(l))
-	default:
-		return options, fmt.Errorf("unrecognized log-level: \"%s\"", logLevel)
-	}
+	l := zapgrpc.NewLogger(esLogger, loggerOpts...)
+
+	options = append(options, setLogger(l))
 	return options, nil
 }
 
