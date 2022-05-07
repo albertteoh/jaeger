@@ -459,9 +459,10 @@ func addLoggerOptions(options []elastic.ClientOptionFunc, logLevel string) ([]el
 	// e.g. --log-level=info and --es.log-level=debug would mute ES's debug logging and would require --log-level=debug
 	// to show ES debug logs.
 	prodConfig := zap.NewProductionConfig()
+
 	var lvl zapcore.Level
-	var setLogger func(logger elastic.Logger) elastic.ClientOptionFunc
 	var loggerOpts []zapgrpc.Option
+	var setLogger func(logger elastic.Logger) elastic.ClientOptionFunc
 
 	switch logLevel {
 	case "debug":
