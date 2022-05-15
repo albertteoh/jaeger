@@ -70,6 +70,9 @@ func TestSuccessfulUnderlyingCalls(t *testing.T) {
 	wantExistingKeys := []string{
 		"latency|operation=get_latencies|result=ok.P50",
 		"latency|operation=get_error_rates|result=ok.P50",
+		"responses|operation=get_latencies.P50",
+		"responses|operation=get_call_rates.P50",
+		"responses|operation=get_error_rates.P50",
 	}
 
 	// This is not exhaustive.
@@ -92,12 +95,12 @@ func checkExpectedExistingAndNonExistentCounters(t *testing.T,
 
 	for _, k := range existingKeys {
 		_, ok := actualGauges[k]
-		assert.True(t, ok)
+		assert.True(t, ok, "Expected %q to exist but it does not exist", k)
 	}
 
 	for _, k := range nonExistentKeys {
 		_, ok := actualGauges[k]
-		assert.False(t, ok)
+		assert.False(t, ok, "Expected %q to not exist but it exists", k)
 	}
 }
 
@@ -147,6 +150,9 @@ func TestFailingUnderlyingCalls(t *testing.T) {
 	wantNonExistentKeys := []string{
 		"latency|operation=get_latencies|result=ok.P50",
 		"latency|operation=get_error_rates|result=ok.P50",
+		"responses|operation=get_latencies.P50",
+		"responses|operation=get_call_rates.P50",
+		"responses|operation=get_error_rates.P50",
 	}
 
 	checkExpectedExistingAndNonExistentCounters(t, counters, wantCounts, gauges, wantExistingKeys, wantNonExistentKeys)
