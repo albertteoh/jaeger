@@ -1,6 +1,7 @@
 version: "3.5"
 services:
-  jaeger:
+
+  jaeger_1:
     networks:
       - backend
     image: jaegertracing/all-in-one:latest
@@ -10,12 +11,38 @@ services:
     environment:
       - METRICS_STORAGE_TYPE=prometheus
       - PROMETHEUS_SERVER_URL=http://prometheus:9090
+      - LOG_LEVEL=debug
     ports:
-      - "14250:14250"
-      - "14268:14268"
-      - "6831:6831/udp"
-      - "16686:16686"
-      - "16685:16685"
+      - "16681:16686"
+
+  jaeger_2:
+    networks:
+      - backend
+    image: jaegertracing/all-in-one:latest
+    volumes:
+      - "./jaeger-ui.json:/etc/jaeger/jaeger-ui.json"
+    command: --query.ui-config /etc/jaeger/jaeger-ui.json
+    environment:
+      - METRICS_STORAGE_TYPE=prometheus
+      - PROMETHEUS_SERVER_URL=http://prometheus:9090
+      - LOG_LEVEL=debug
+    ports:
+      - "16682:16686"
+
+  jaeger_3:
+    networks:
+      - backend
+    image: jaegertracing/all-in-one:latest
+    volumes:
+      - "./jaeger-ui.json:/etc/jaeger/jaeger-ui.json"
+    command: --query.ui-config /etc/jaeger/jaeger-ui.json
+    environment:
+      - METRICS_STORAGE_TYPE=prometheus
+      - PROMETHEUS_SERVER_URL=http://prometheus:9090
+      - LOG_LEVEL=debug
+    ports:
+      - "16683:16686"
+
   otel_collector:
     networks:
       - backend
@@ -24,7 +51,8 @@ services:
       - "./otel-collector-config.yml:/etc/otelcol/otel-collector-config.yml"
     command: --config /etc/otelcol/otel-collector-config.yml
     depends_on:
-      - jaeger
+      - jaeger_1
+      - jaeger_2
   microsim:
     networks:
       - backend
@@ -40,5 +68,6 @@ services:
       - "./prometheus.yml:/etc/prometheus/prometheus.yml"
     ports:
       - "9090:9090"
+
 networks:
   backend:
