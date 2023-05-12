@@ -27,12 +27,20 @@ import (
 )
 
 const (
-	suffixServerURL       = ".server-url"
-	suffixConnectTimeout  = ".connect-timeout"
-	suffixTokenFilePath   = ".token-file"
-	defaultServerURL      = "http://localhost:9090"
-	defaultConnectTimeout = 30 * time.Second
-	defaultTokenFilePath  = ""
+	suffixServerURL         = ".server-url"
+	suffixConnectTimeout    = ".connect-timeout"
+	suffixTokenFilePath     = ".token-file"
+	suffixMetricNamespace   = ".query.namespace"
+	suffixCallsMetricName   = ".query.calls-metric-name"
+	suffixLatencyMetricName = ".query.duration-metric-name"
+	suffixLatencyUnit       = ".query.duration-unit"
+
+	defaultServerURL         = "http://localhost:9090"
+	defaultConnectTimeout    = 30 * time.Second
+	defaultTokenFilePath     = ""
+	defaultCallsMetricName   = "calls"
+	defaultLatencyMetricName = "latency"
+	defaultLatencyUnit       = "ms"
 )
 
 type namespaceConfig struct {
@@ -63,9 +71,24 @@ func NewOptions(primaryNamespace string) *Options {
 // AddFlags from this storage to the CLI.
 func (opt *Options) AddFlags(flagSet *flag.FlagSet) {
 	nsConfig := &opt.Primary
-	flagSet.String(nsConfig.namespace+suffixServerURL, defaultServerURL, "The Prometheus server's URL, must include the protocol scheme e.g. http://localhost:9090")
-	flagSet.Duration(nsConfig.namespace+suffixConnectTimeout, defaultConnectTimeout, "The period to wait for a connection to Prometheus when executing queries.")
-	flagSet.String(nsConfig.namespace+suffixTokenFilePath, defaultTokenFilePath, "The path to a file containing the bearer token which will be included when executing queries against the Prometheus API.")
+	flagSet.String(nsConfig.namespace+suffixServerURL, defaultServerURL,
+		"The Prometheus server's URL, must include the protocol scheme e.g. http://localhost:9090")
+	flagSet.Duration(nsConfig.namespace+suffixConnectTimeout, defaultConnectTimeout,
+		"The period to wait for a connection to Prometheus when executing queries.")
+	flagSet.String(nsConfig.namespace+suffixTokenFilePath, defaultTokenFilePath,
+		"The path to a file containing the bearer token which will be included when executing queries against the Prometheus API.")
+	flagSet.String(nsConfig.namespace+suffixMetricNamespace, "",
+		`The metric namespace that is prefixed to the metric name. A '.' separator will be added between `+
+			`the namespace and the metric name.`)
+	flagSet.String(nsConfig.namespace+suffixCallsMetricName, defaultCallsMetricName,
+		`The metric name for the "calls" counter when querying this metric against the Prometheus API, `+
+			`which contains the total number of requests made on an API.`)
+	flagSet.String(nsConfig.namespace+suffixLatencyMetricName, defaultLatencyMetricName,
+		`The metric name for the "latency" histogram-class of metrics when querying this metric against `+
+			`the Prometheus API, which contains the round-trip durations/latencies as histograms of requests made on an API.`)
+	flagSet.String(nsConfig.namespace+suffixLatencyUnit, defaultLatencyUnit,
+		`The units used for the "latency" histogram. It can be either "ms" or "s". This also tells jaeger-query `+
+			`what the metric name should be when querying for "latency" metrics.`)
 	nsConfig.getTLSFlagsConfig().AddFlags(flagSet)
 }
 
@@ -75,6 +98,10 @@ func (opt *Options) InitFromViper(v *viper.Viper) error {
 	cfg.ServerURL = stripWhiteSpace(v.GetString(cfg.namespace + suffixServerURL))
 	cfg.ConnectTimeout = v.GetDuration(cfg.namespace + suffixConnectTimeout)
 	cfg.TokenFilePath = v.GetString(cfg.namespace + suffixTokenFilePath)
+	cfg.MetricNamespace = v.GetString(cfg.namespace + suffixMetricNamespace)
+	cfg.CallsMetricName = v.GetString(cfg.namespace + suffixCallsMetricName)
+	cfg.LatencyMetricName = v.GetString(cfg.namespace + suffixLatencyMetricName)
+	cfg.LatencyUnit = v.GetString(cfg.namespace + suffixLatencyUnit)
 	var err error
 	cfg.TLS, err = cfg.getTLSFlagsConfig().InitFromViper(v)
 	if err != nil {

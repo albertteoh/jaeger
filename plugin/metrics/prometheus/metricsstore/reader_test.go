@@ -40,14 +40,16 @@ import (
 
 type (
 	metricsTestCase struct {
-		name             string
-		serviceNames     []string
-		spanKinds        []string
-		groupByOperation bool
-		wantName         string
-		wantDescription  string
-		wantLabels       map[string]string
-		wantPromQlQuery  string
+		name              string
+		serviceNames      []string
+		spanKinds         []string
+		groupByOperation  bool
+		callsMetricName   string
+		latencyMetricName string
+		wantName          string
+		wantDescription   string
+		wantLabels        map[string]string
+		wantPromQlQuery   string
 	}
 )
 
@@ -168,6 +170,20 @@ func TestGetLatencies(t *testing.T) {
 			},
 			wantPromQlQuery: `histogram_quantile(0.95, sum(rate(latency_bucket{service_name =~ "frontend|emailservice", ` +
 				`span_kind =~ "SPAN_KIND_SERVER|SPAN_KIND_CLIENT"}[10m])) by (service_name,le))`,
+		},
+		{
+			name:              "override the default latency metric name",
+			serviceNames:      []string{"emailservice"},
+			spanKinds:         []string{"SPAN_KIND_SERVER"},
+			groupByOperation:  false,
+			latencyMetricName: "span.metrics.duration",
+			wantName:          "service_latencies",
+			wantDescription:   "0.95th quantile latency, grouped by service",
+			wantLabels: map[string]string{
+				"service_name": "emailservice",
+			},
+			wantPromQlQuery: `histogram_quantile(0.95, sum(rate(span.metrics.duration_bucket{service_name =~ "emailservice", ` +
+				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name,le))`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
