@@ -35,12 +35,13 @@ const (
 	suffixLatencyMetricName = ".query.duration-metric-name"
 	suffixLatencyUnit       = ".query.duration-unit"
 
-	defaultServerURL         = "http://localhost:9090"
-	defaultConnectTimeout    = 30 * time.Second
-	defaultTokenFilePath     = ""
+	defaultServerURL      = "http://localhost:9090"
+	defaultConnectTimeout = 30 * time.Second
+	defaultTokenFilePath  = ""
+
 	defaultCallsMetricName   = "calls"
 	defaultLatencyMetricName = "latency"
-	defaultLatencyUnit       = "ms"
+	defaultLatencyUnit       = ""
 )
 
 type namespaceConfig struct {
@@ -87,8 +88,10 @@ func (opt *Options) AddFlags(flagSet *flag.FlagSet) {
 		`The metric name for the "latency" histogram-class of metrics when querying this metric against `+
 			`the Prometheus API, which contains the round-trip durations/latencies as histograms of requests made on an API.`)
 	flagSet.String(nsConfig.namespace+suffixLatencyUnit, defaultLatencyUnit,
-		`The units used for the "latency" histogram. It can be either "ms" or "s". This also tells jaeger-query `+
-			`what the metric name should be when querying for "latency" metrics.`)
+		`The units used for the "latency" histogram. It can be either "ms" or "s" and should be consistent with the `+
+			`histogram unit value set in the spanmetrics connector (see: `+
+			`https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/connector/spanmetricsconnector#configurations). `+
+			`This also helps jaeger-query determine the metric name when querying for "latency" metrics.`)
 	nsConfig.getTLSFlagsConfig().AddFlags(flagSet)
 }
 
@@ -102,6 +105,14 @@ func (opt *Options) InitFromViper(v *viper.Viper) error {
 	cfg.CallsMetricName = v.GetString(cfg.namespace + suffixCallsMetricName)
 	cfg.LatencyMetricName = v.GetString(cfg.namespace + suffixLatencyMetricName)
 	cfg.LatencyUnit = v.GetString(cfg.namespace + suffixLatencyUnit)
+
+	if v.IsSet(cfg.namespace + suffixLatencyUnit) {
+		isValidUnit := map[string]bool{"ms": true, "s": true}
+		if _, ok := isValidUnit[cfg.LatencyUnit]; !ok {
+			return fmt.Errorf(`duration-unit must be one of "ms" or "s", not %q`, cfg.LatencyUnit)
+		}
+	}
+
 	var err error
 	cfg.TLS, err = cfg.getTLSFlagsConfig().InitFromViper(v)
 	if err != nil {

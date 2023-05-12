@@ -40,20 +40,27 @@ import (
 
 type (
 	metricsTestCase struct {
-		name              string
-		serviceNames      []string
-		spanKinds         []string
-		groupByOperation  bool
-		callsMetricName   string
-		latencyMetricName string
-		wantName          string
-		wantDescription   string
-		wantLabels        map[string]string
-		wantPromQlQuery   string
+		name             string
+		serviceNames     []string
+		spanKinds        []string
+		groupByOperation bool
+		updateConfig     func(config.Configuration) config.Configuration
+		wantName         string
+		wantDescription  string
+		wantLabels       map[string]string
+		wantPromQlQuery  string
 	}
 )
 
 const defaultTimeout = 30 * time.Second
+
+// defaultConfig should consist of the default values for the prometheus.query.* command line options.
+var defaultConfig = config.Configuration{
+	MetricNamespace:   "",
+	CallsMetricName:   "calls",
+	LatencyMetricName: "latency",
+	LatencyUnit:       "",
+}
 
 func TestNewMetricsReaderValidAddress(t *testing.T) {
 	logger := zap.NewNop()
@@ -172,17 +179,22 @@ func TestGetLatencies(t *testing.T) {
 				`span_kind =~ "SPAN_KIND_SERVER|SPAN_KIND_CLIENT"}[10m])) by (service_name,le))`,
 		},
 		{
-			name:              "override the default latency metric name",
-			serviceNames:      []string{"emailservice"},
-			spanKinds:         []string{"SPAN_KIND_SERVER"},
-			groupByOperation:  false,
-			latencyMetricName: "span.metrics.duration",
-			wantName:          "service_latencies",
-			wantDescription:   "0.95th quantile latency, grouped by service",
+			name:             "override the default latency metric name",
+			serviceNames:     []string{"emailservice"},
+			spanKinds:        []string{"SPAN_KIND_SERVER"},
+			groupByOperation: false,
+			updateConfig: func(cfg config.Configuration) config.Configuration {
+				cfg.MetricNamespace = "span_metrics"
+				cfg.LatencyMetricName = "myduration"
+				cfg.LatencyUnit = "s"
+				return cfg
+			},
+			wantName:        "service_latencies",
+			wantDescription: "0.95th quantile latency, grouped by service",
 			wantLabels: map[string]string{
 				"service_name": "emailservice",
 			},
-			wantPromQlQuery: `histogram_quantile(0.95, sum(rate(span.metrics.duration_bucket{service_name =~ "emailservice", ` +
+			wantPromQlQuery: `histogram_quantile(0.95, sum(rate(span_metrics_myduration_seconds_bucket{service_name =~ "emailservice", ` +
 				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name,le))`,
 		},
 	} {
@@ -191,7 +203,11 @@ func TestGetLatencies(t *testing.T) {
 				BaseQueryParameters: buildTestBaseQueryParametersFrom(tc),
 				Quantile:            0.95,
 			}
-			reader, mockPrometheus := prepareMetricsReaderAndServer(t, tc.wantPromQlQuery, nil)
+			cfg := defaultConfig
+			if tc.updateConfig != nil {
+				cfg = tc.updateConfig(cfg)
+			}
+			reader, mockPrometheus := prepareMetricsReaderAndServer(t, cfg, tc.wantPromQlQuery, nil)
 			defer mockPrometheus.Close()
 
 			m, err := reader.GetLatencies(context.Background(), &params)
@@ -243,12 +259,34 @@ func TestGetCallRates(t *testing.T) {
 			wantPromQlQuery: `sum(rate(calls_total{service_name =~ "frontend|emailservice", ` +
 				`span_kind =~ "SPAN_KIND_SERVER|SPAN_KIND_CLIENT"}[10m])) by (service_name)`,
 		},
+		{
+			name:             "override the default latency metric name",
+			serviceNames:     []string{"emailservice"},
+			spanKinds:        []string{"SPAN_KIND_SERVER"},
+			groupByOperation: false,
+			updateConfig: func(cfg config.Configuration) config.Configuration {
+				cfg.MetricNamespace = "span_metrics"
+				cfg.CallsMetricName = "mycalls"
+				return cfg
+			},
+			wantName:        "service_call_rate",
+			wantDescription: "calls/sec, grouped by service",
+			wantLabels: map[string]string{
+				"service_name": "emailservice",
+			},
+			wantPromQlQuery: `sum(rate(span_metrics_mycalls_total{service_name =~ "emailservice", ` +
+				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name)`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			params := metricsstore.CallRateQueryParameters{
 				BaseQueryParameters: buildTestBaseQueryParametersFrom(tc),
 			}
-			reader, mockPrometheus := prepareMetricsReaderAndServer(t, tc.wantPromQlQuery, nil)
+			cfg := defaultConfig
+			if tc.updateConfig != nil {
+				cfg = tc.updateConfig(cfg)
+			}
+			reader, mockPrometheus := prepareMetricsReaderAndServer(t, cfg, tc.wantPromQlQuery, nil)
 			defer mockPrometheus.Close()
 
 			m, err := reader.GetCallRates(context.Background(), &params)
@@ -303,12 +341,35 @@ func TestGetErrorRates(t *testing.T) {
 				`span_kind =~ "SPAN_KIND_SERVER|SPAN_KIND_CLIENT"}[10m])) by (service_name) / ` +
 				`sum(rate(calls_total{service_name =~ "frontend|emailservice", span_kind =~ "SPAN_KIND_SERVER|SPAN_KIND_CLIENT"}[10m])) by (service_name)`,
 		},
+		{
+			name:             "override the default latency metric name",
+			serviceNames:     []string{"emailservice"},
+			spanKinds:        []string{"SPAN_KIND_SERVER"},
+			groupByOperation: false,
+			updateConfig: func(cfg config.Configuration) config.Configuration {
+				cfg.MetricNamespace = "span_metrics"
+				cfg.CallsMetricName = "mycalls"
+				return cfg
+			},
+			wantName:        "service_error_rate",
+			wantDescription: "error rate, computed as a fraction of errors/sec over calls/sec, grouped by service",
+			wantLabels: map[string]string{
+				"service_name": "emailservice",
+			},
+			wantPromQlQuery: `sum(rate(span_metrics_mycalls_total{service_name =~ "emailservice", status_code = "STATUS_CODE_ERROR", ` +
+				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name) / ` +
+				`sum(rate(span_metrics_mycalls_total{service_name =~ "emailservice", span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name)`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			params := metricsstore.ErrorRateQueryParameters{
 				BaseQueryParameters: buildTestBaseQueryParametersFrom(tc),
 			}
-			reader, mockPrometheus := prepareMetricsReaderAndServer(t, tc.wantPromQlQuery, nil)
+			cfg := defaultConfig
+			if tc.updateConfig != nil {
+				cfg = tc.updateConfig(cfg)
+			}
+			reader, mockPrometheus := prepareMetricsReaderAndServer(t, cfg, tc.wantPromQlQuery, nil)
 			defer mockPrometheus.Close()
 
 			m, err := reader.GetErrorRates(context.Background(), &params)
@@ -322,7 +383,7 @@ func TestWarningResponse(t *testing.T) {
 	params := metricsstore.ErrorRateQueryParameters{
 		BaseQueryParameters: buildTestBaseQueryParametersFrom(metricsTestCase{serviceNames: []string{"foo"}}),
 	}
-	reader, mockPrometheus := prepareMetricsReaderAndServer(t, "", []string{"warning0", "warning1"})
+	reader, mockPrometheus := prepareMetricsReaderAndServer(t, config.Configuration{}, "", []string{"warning0", "warning1"})
 	defer mockPrometheus.Close()
 
 	m, err := reader.GetErrorRates(context.Background(), &params)
@@ -485,15 +546,21 @@ func buildTestBaseQueryParametersFrom(tc metricsTestCase) metricsstore.BaseQuery
 	}
 }
 
-func prepareMetricsReaderAndServer(t *testing.T, wantPromQlQuery string, wantWarnings []string) (metricsstore.Reader, *httptest.Server) {
+func prepareMetricsReaderAndServer(t *testing.T, config config.Configuration, wantPromQlQuery string, wantWarnings []string) (metricsstore.Reader, *httptest.Server) {
 	mockPrometheus := startMockPrometheusServer(t, wantPromQlQuery, wantWarnings)
 
 	logger := zap.NewNop()
+
 	address := mockPrometheus.Listener.Addr().String()
-	reader, err := NewMetricsReader(logger, config.Configuration{
-		ServerURL:      "http://" + address,
-		ConnectTimeout: defaultTimeout,
-	})
+	config.ServerURL = "http://" + address
+	config.ConnectTimeout = defaultTimeout
+
+	reader, err := NewMetricsReader(logger, config)
+
+	// 	config.Configuration{
+	// 	ServerURL:      "http://" + address,
+	// 	ConnectTimeout: defaultTimeout,
+	// })
 	require.NoError(t, err)
 	return reader, mockPrometheus
 }

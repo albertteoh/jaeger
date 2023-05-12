@@ -58,6 +58,9 @@ type (
 	MetricsReader struct {
 		client promapi.API
 		logger *zap.Logger
+
+		latencyMetricName string
+		callsMetricName   string
 	}
 
 	promQueryParams struct {
@@ -89,16 +92,21 @@ func NewMetricsReader(logger *zap.Logger, cfg config.Configuration) (*MetricsRea
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize prometheus client: %w", err)
 	}
+
 	mr := &MetricsReader{
 		client: promapi.NewAPI(client),
 		logger: logger,
+
+		callsMetricName:   buildFullCallsMetricName(cfg.MetricNamespace, cfg.CallsMetricName),
+		latencyMetricName: buildFullLatencyMetricName(cfg.MetricNamespace, cfg.LatencyMetricName, cfg.LatencyUnit),
 	}
+
 	logger.Info("Prometheus reader initialized", zap.String("addr", cfg.ServerURL))
 	return mr, nil
 }
 
 // GetLatencies gets the latency metrics for the given set of latency query parameters.
-func (m *MetricsReader) GetLatencies(ctx context.Context, requestParams *metricsstore.LatenciesQueryParameters) (*metrics.MetricFamily, error) {
+func (m MetricsReader) GetLatencies(ctx context.Context, requestParams *metricsstore.LatenciesQueryParameters) (*metrics.MetricFamily, error) {
 	metricsParams := metricsQueryParams{
 		BaseQueryParameters: requestParams.BaseQueryParameters,
 		groupByHistBucket:   true,
@@ -107,8 +115,9 @@ func (m *MetricsReader) GetLatencies(ctx context.Context, requestParams *metrics
 		buildPromQuery: func(p promQueryParams) string {
 			return fmt.Sprintf(
 				// Note: p.spanKindFilter can be ""; trailing commas are okay within a timeseries selection.
-				`histogram_quantile(%.2f, sum(rate(latency_bucket{service_name =~ "%s", %s}[%s])) by (%s))`,
+				`histogram_quantile(%.2f, sum(rate(%s_bucket{service_name =~ "%s", %s}[%s])) by (%s))`,
 				requestParams.Quantile,
+				m.latencyMetricName,
 				p.serviceFilter,
 				p.spanKindFilter,
 				p.rate,
@@ -119,8 +128,29 @@ func (m *MetricsReader) GetLatencies(ctx context.Context, requestParams *metrics
 	return m.executeQuery(ctx, metricsParams)
 }
 
+func buildFullLatencyMetricName(metricNamespace, latencyMetricName, latencyUnit string) string {
+	metricName := latencyMetricName
+	if metricNamespace != "" {
+		metricName = metricNamespace + "_" + metricName
+	}
+
+	// Maintain backwards compatibility where the unit was not appended to the metric name.
+	if latencyUnit == "" {
+		return metricName
+	}
+
+	// The long names are automatically appended to the metric name by OTEL's prometheus exporters and are defined in:
+	//   https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/pkg/translator/prometheus#metric-name
+	shortToLongName := map[string]string{"ms": "milliseconds", "s": "seconds"}
+	lname, ok := shortToLongName[latencyUnit]
+	if !ok {
+		panic("programming error: unknown latency unit: " + latencyUnit)
+	}
+	return metricName + "_" + lname
+}
+
 // GetCallRates gets the call rate metrics for the given set of call rate query parameters.
-func (m *MetricsReader) GetCallRates(ctx context.Context, requestParams *metricsstore.CallRateQueryParameters) (*metrics.MetricFamily, error) {
+func (m MetricsReader) GetCallRates(ctx context.Context, requestParams *metricsstore.CallRateQueryParameters) (*metrics.MetricFamily, error) {
 	metricsParams := metricsQueryParams{
 		BaseQueryParameters: requestParams.BaseQueryParameters,
 		metricName:          callsMetricName,
@@ -128,7 +158,8 @@ func (m *MetricsReader) GetCallRates(ctx context.Context, requestParams *metrics
 		buildPromQuery: func(p promQueryParams) string {
 			return fmt.Sprintf(
 				// Note: p.spanKindFilter can be ""; trailing commas are okay within a timeseries selection.
-				`sum(rate(calls_total{service_name =~ "%s", %s}[%s])) by (%s)`,
+				`sum(rate(%s_total{service_name =~ "%s", %s}[%s])) by (%s)`,
+				m.callsMetricName,
 				p.serviceFilter,
 				p.spanKindFilter,
 				p.rate,
@@ -139,8 +170,16 @@ func (m *MetricsReader) GetCallRates(ctx context.Context, requestParams *metrics
 	return m.executeQuery(ctx, metricsParams)
 }
 
+func buildFullCallsMetricName(metricNamespace, callsMetricName string) string {
+	metricName := callsMetricName
+	if metricNamespace != "" {
+		metricName = metricNamespace + "_" + metricName
+	}
+	return metricName
+}
+
 // GetErrorRates gets the error rate metrics for the given set of error rate query parameters.
-func (m *MetricsReader) GetErrorRates(ctx context.Context, requestParams *metricsstore.ErrorRateQueryParameters) (*metrics.MetricFamily, error) {
+func (m MetricsReader) GetErrorRates(ctx context.Context, requestParams *metricsstore.ErrorRateQueryParameters) (*metrics.MetricFamily, error) {
 	metricsParams := metricsQueryParams{
 		BaseQueryParameters: requestParams.BaseQueryParameters,
 		metricName:          errorsMetricName,
@@ -148,9 +187,9 @@ func (m *MetricsReader) GetErrorRates(ctx context.Context, requestParams *metric
 		buildPromQuery: func(p promQueryParams) string {
 			return fmt.Sprintf(
 				// Note: p.spanKindFilter can be ""; trailing commas are okay within a timeseries selection.
-				`sum(rate(calls_total{service_name =~ "%s", status_code = "STATUS_CODE_ERROR", %s}[%s])) by (%s) / sum(rate(calls_total{service_name =~ "%s", %s}[%s])) by (%s)`,
-				p.serviceFilter, p.spanKindFilter, p.rate, p.groupBy,
-				p.serviceFilter, p.spanKindFilter, p.rate, p.groupBy,
+				`sum(rate(%s_total{service_name =~ "%s", status_code = "STATUS_CODE_ERROR", %s}[%s])) by (%s) / sum(rate(%s_total{service_name =~ "%s", %s}[%s])) by (%s)`,
+				m.callsMetricName, p.serviceFilter, p.spanKindFilter, p.rate, p.groupBy,
+				m.callsMetricName, p.serviceFilter, p.spanKindFilter, p.rate, p.groupBy,
 			)
 		},
 	}
@@ -158,12 +197,12 @@ func (m *MetricsReader) GetErrorRates(ctx context.Context, requestParams *metric
 }
 
 // GetMinStepDuration gets the minimum step duration (the smallest possible duration between two data points in a time series) supported.
-func (m *MetricsReader) GetMinStepDuration(_ context.Context, _ *metricsstore.MinStepDurationQueryParameters) (time.Duration, error) {
+func (m MetricsReader) GetMinStepDuration(_ context.Context, _ *metricsstore.MinStepDurationQueryParameters) (time.Duration, error) {
 	return minStep, nil
 }
 
 // executeQuery executes a query against a Prometheus-compliant metrics backend.
-func (m *MetricsReader) executeQuery(ctx context.Context, p metricsQueryParams) (*metrics.MetricFamily, error) {
+func (m MetricsReader) executeQuery(ctx context.Context, p metricsQueryParams) (*metrics.MetricFamily, error) {
 	if p.GroupByOperation {
 		p.metricName = strings.Replace(p.metricName, "service", "service_operation", 1)
 		p.metricDesc += " & operation"
