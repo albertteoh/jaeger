@@ -11,11 +11,13 @@ run:
 
 .PHONY: clean-jaeger
 clean-jaeger:
-	docker rmi -f jaegertracing/all-in-one:latest && \
-	docker rmi -f jaegertracing/all-in-one:dev
+	# Also cleans up intermediate cached containers.
+	docker system prune -f
 
-.PHONY: clean
+.PHONY: clean-all
 clean: clean-jaeger
-	docker rmi -f otel/opentelemetry-collector-contrib:latest && \
-	docker rmi -f prom/prometheus:latest && \
+	docker rmi -f jaegertracing/all-in-one:dev ; \
+	docker rmi -f jaegertracing/all-in-one:latest ; \
+	docker rmi -f otel/opentelemetry-collector-contrib:latest ; \
+	docker rmi -f prom/prometheus:latest ; \
 	docker rmi -f grafana/grafana:latest

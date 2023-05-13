@@ -60,6 +60,7 @@ var defaultConfig = config.Configuration{
 	CallsMetricName:   "calls",
 	LatencyMetricName: "latency",
 	LatencyUnit:       "",
+	OperationLabel:    "operation",
 }
 
 func TestNewMetricsReaderValidAddress(t *testing.T) {
@@ -182,20 +183,21 @@ func TestGetLatencies(t *testing.T) {
 			name:             "override the default latency metric name",
 			serviceNames:     []string{"emailservice"},
 			spanKinds:        []string{"SPAN_KIND_SERVER"},
-			groupByOperation: false,
+			groupByOperation: true,
 			updateConfig: func(cfg config.Configuration) config.Configuration {
 				cfg.MetricNamespace = "span_metrics"
 				cfg.LatencyMetricName = "myduration"
 				cfg.LatencyUnit = "s"
+				cfg.OperationLabel = "span_name"
 				return cfg
 			},
-			wantName:        "service_latencies",
-			wantDescription: "0.95th quantile latency, grouped by service",
+			wantName:        "service_operation_latencies",
+			wantDescription: "0.95th quantile latency, grouped by service & operation",
 			wantLabels: map[string]string{
 				"service_name": "emailservice",
 			},
 			wantPromQlQuery: `histogram_quantile(0.95, sum(rate(span_metrics_myduration_seconds_bucket{service_name =~ "emailservice", ` +
-				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name,le))`,
+				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name,span_name,le))`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -263,19 +265,20 @@ func TestGetCallRates(t *testing.T) {
 			name:             "override the default latency metric name",
 			serviceNames:     []string{"emailservice"},
 			spanKinds:        []string{"SPAN_KIND_SERVER"},
-			groupByOperation: false,
+			groupByOperation: true,
 			updateConfig: func(cfg config.Configuration) config.Configuration {
 				cfg.MetricNamespace = "span_metrics"
 				cfg.CallsMetricName = "mycalls"
+				cfg.OperationLabel = "span_name"
 				return cfg
 			},
-			wantName:        "service_call_rate",
-			wantDescription: "calls/sec, grouped by service",
+			wantName:        "service_operation_call_rate",
+			wantDescription: "calls/sec, grouped by service & operation",
 			wantLabels: map[string]string{
 				"service_name": "emailservice",
 			},
 			wantPromQlQuery: `sum(rate(span_metrics_mycalls_total{service_name =~ "emailservice", ` +
-				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name)`,
+				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name,span_name)`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -345,20 +348,21 @@ func TestGetErrorRates(t *testing.T) {
 			name:             "override the default latency metric name",
 			serviceNames:     []string{"emailservice"},
 			spanKinds:        []string{"SPAN_KIND_SERVER"},
-			groupByOperation: false,
+			groupByOperation: true,
 			updateConfig: func(cfg config.Configuration) config.Configuration {
 				cfg.MetricNamespace = "span_metrics"
 				cfg.CallsMetricName = "mycalls"
+				cfg.OperationLabel = "span_name"
 				return cfg
 			},
-			wantName:        "service_error_rate",
-			wantDescription: "error rate, computed as a fraction of errors/sec over calls/sec, grouped by service",
+			wantName:        "service_operation_error_rate",
+			wantDescription: "error rate, computed as a fraction of errors/sec over calls/sec, grouped by service & operation",
 			wantLabels: map[string]string{
 				"service_name": "emailservice",
 			},
 			wantPromQlQuery: `sum(rate(span_metrics_mycalls_total{service_name =~ "emailservice", status_code = "STATUS_CODE_ERROR", ` +
-				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name) / ` +
-				`sum(rate(span_metrics_mycalls_total{service_name =~ "emailservice", span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name)`,
+				`span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name,span_name) / ` +
+				`sum(rate(span_metrics_mycalls_total{service_name =~ "emailservice", span_kind =~ "SPAN_KIND_SERVER"}[10m])) by (service_name,span_name)`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -377,6 +381,15 @@ func TestGetErrorRates(t *testing.T) {
 			assertMetrics(t, m, tc.wantLabels, tc.wantName, tc.wantDescription)
 		})
 	}
+}
+
+func TestInvalidLatencyUnit(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("Expected a panic due to invalid latency unit")
+		}
+	}()
+	_, _ = NewMetricsReader(zap.NewNop(), config.Configuration{LatencyUnit: "something invalid"})
 }
 
 func TestWarningResponse(t *testing.T) {

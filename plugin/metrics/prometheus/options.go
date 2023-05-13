@@ -34,6 +34,7 @@ const (
 	suffixCallsMetricName   = ".query.calls-metric-name"
 	suffixLatencyMetricName = ".query.duration-metric-name"
 	suffixLatencyUnit       = ".query.duration-unit"
+	suffixOperationLabel    = ".query.span-name-label"
 
 	defaultServerURL      = "http://localhost:9090"
 	defaultConnectTimeout = 30 * time.Second
@@ -42,6 +43,7 @@ const (
 	defaultCallsMetricName   = "calls"
 	defaultLatencyMetricName = "latency"
 	defaultLatencyUnit       = ""
+	defaultOperationLabel    = "operation"
 )
 
 type namespaceConfig struct {
@@ -92,6 +94,9 @@ func (opt *Options) AddFlags(flagSet *flag.FlagSet) {
 			`histogram unit value set in the spanmetrics connector (see: `+
 			`https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/connector/spanmetricsconnector#configurations). `+
 			`This also helps jaeger-query determine the metric name when querying for "latency" metrics.`)
+	flagSet.String(nsConfig.namespace+suffixOperationLabel, defaultOperationLabel,
+		`The label name containing the span's operation. This label will be used when querying Prometheus API `+
+			`when grouping by operation.`)
 	nsConfig.getTLSFlagsConfig().AddFlags(flagSet)
 }
 
@@ -105,6 +110,7 @@ func (opt *Options) InitFromViper(v *viper.Viper) error {
 	cfg.CallsMetricName = v.GetString(cfg.namespace + suffixCallsMetricName)
 	cfg.LatencyMetricName = v.GetString(cfg.namespace + suffixLatencyMetricName)
 	cfg.LatencyUnit = v.GetString(cfg.namespace + suffixLatencyUnit)
+	cfg.OperationLabel = v.GetString(cfg.namespace + suffixOperationLabel)
 
 	if v.IsSet(cfg.namespace + suffixLatencyUnit) {
 		isValidUnit := map[string]bool{"ms": true, "s": true}

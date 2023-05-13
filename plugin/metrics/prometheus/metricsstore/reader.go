@@ -59,8 +59,10 @@ type (
 		client promapi.API
 		logger *zap.Logger
 
+		metricsTranslator dbmodel.Translator
 		latencyMetricName string
 		callsMetricName   string
+		operationLabel    string
 	}
 
 	promQueryParams struct {
@@ -82,6 +84,7 @@ type (
 // NewMetricsReader returns a new MetricsReader.
 func NewMetricsReader(logger *zap.Logger, cfg config.Configuration) (*MetricsReader, error) {
 	logger.Info("Creating metrics reader", zap.Any("configuration", cfg))
+
 	roundTripper, err := getHTTPRoundTripper(&cfg, logger)
 	if err != nil {
 		return nil, err
@@ -98,8 +101,10 @@ func NewMetricsReader(logger *zap.Logger, cfg config.Configuration) (*MetricsRea
 		client: promapi.NewAPI(client),
 		logger: logger,
 
+		metricsTranslator: dbmodel.New(cfg.OperationLabel),
 		callsMetricName:   buildFullCallsMetricName(cfg.MetricNamespace, cfg.CallsMetricName),
 		latencyMetricName: buildFullLatencyMetricName(cfg.MetricNamespace, cfg.LatencyMetricName, cfg.LatencyUnit),
+		operationLabel:    cfg.OperationLabel,
 	}
 
 	logger.Info("Prometheus reader initialized", zap.String("addr", cfg.ServerURL))
@@ -219,19 +224,18 @@ func (m MetricsReader) executeQuery(ctx context.Context, p metricsQueryParams) (
 		Step:  *p.Step,
 	}
 
-	m.logger.Debug("Executing Prometheus query", zap.String("query", promQuery), zap.Any("range", queryRange))
-
 	mv, warnings, err := m.client.QueryRange(ctx, promQuery, queryRange)
 	if err != nil {
 		logErrorToSpan(span, err)
 		return &metrics.MetricFamily{}, fmt.Errorf("failed executing metrics query: %w", err)
 	}
 	if len(warnings) > 0 {
-		m.logger.Warn("Warnings detected on Prometheus query", zap.Any("warnings", warnings))
+		m.logger.Warn("Warnings detected on Prometheus query", zap.Any("warnings", warnings), zap.String("query", promQuery), zap.Any("range", queryRange))
 	}
 
-	m.logger.Debug("Prometheus query results", zap.String("results", mv.String()))
-	return dbmodel.ToDomainMetricsFamily(
+	m.logger.Debug("Prometheus query results", zap.String("results", mv.String()), zap.String("query", promQuery), zap.Any("range", queryRange))
+
+	return m.metricsTranslator.ToDomainMetricsFamily(
 		p.metricName,
 		p.metricDesc,
 		mv,
@@ -241,7 +245,7 @@ func (m MetricsReader) executeQuery(ctx context.Context, p metricsQueryParams) (
 func (m MetricsReader) buildPromQuery(metricsParams metricsQueryParams) string {
 	groupBy := []string{"service_name"}
 	if metricsParams.GroupByOperation {
-		groupBy = append(groupBy, "operation")
+		groupBy = append(groupBy, m.operationLabel)
 	}
 	if metricsParams.groupByHistBucket {
 		// Group by the bucket value ("le" => "less than or equal to").
@@ -258,13 +262,7 @@ func (m MetricsReader) buildPromQuery(metricsParams metricsQueryParams) string {
 		rate:           promqlDurationString(metricsParams.RatePer),
 		groupBy:        strings.Join(groupBy, ","),
 	}
-
-	queryString := metricsParams.buildPromQuery(promParams)
-	m.logger.Debug("Querying prometheus",
-		zap.String("name", metricsParams.metricName),
-		zap.String("query", queryString),
-	)
-	return queryString
+	return metricsParams.buildPromQuery(promParams)
 }
 
 // promqlDurationString formats the duration string to be promQL-compliant.

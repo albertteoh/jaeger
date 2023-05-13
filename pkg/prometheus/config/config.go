@@ -30,4 +30,5 @@ type Configuration struct {
 	CallsMetricName   string
 	LatencyMetricName string
 	LatencyUnit       string
+	OperationLabel    string
 }

@@ -47,6 +47,7 @@ func newStructJSONMarshaler(prettyPrint bool) jsonMarshaler {
 	}
 	return func(w io.Writer, response interface{}) error {
 		resp, err := marshaler(response)
+		fmt.Printf("ALBTEO: response: %s\n", resp)
 		if err != nil {
 			return fmt.Errorf("failed marshalling HTTP response to JSON: %w", err)
 		}

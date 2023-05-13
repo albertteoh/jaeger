@@ -13,6 +13,7 @@ services:
       - PROMETHEUS_QUERY_NAMESPACE=span_metrics
       - PROMETHEUS_QUERY_DURATION_METRIC_NAME=duration
       - PROMETHEUS_QUERY_DURATION_UNIT=ms
+      - PROMETHEUS_QUERY_SPAN_NAME_LABEL=span_name
       - LOG_LEVEL=debug
     ports:
       - "16686:16686"
