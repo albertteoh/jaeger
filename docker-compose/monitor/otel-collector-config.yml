@@ -21,9 +21,6 @@ exporters:
 connectors:
   spanmetrics:
     namespace: span.metrics
-    histogram:
-      unit: "s"
-      explicit:
 
 processors:
   batch:

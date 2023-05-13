@@ -81,6 +81,7 @@ type (
 
 // NewMetricsReader returns a new MetricsReader.
 func NewMetricsReader(logger *zap.Logger, cfg config.Configuration) (*MetricsReader, error) {
+	logger.Info("Creating metrics reader", zap.Any("configuration", cfg))
 	roundTripper, err := getHTTPRoundTripper(&cfg, logger)
 	if err != nil {
 		return nil, err
@@ -207,7 +208,7 @@ func (m MetricsReader) executeQuery(ctx context.Context, p metricsQueryParams) (
 		p.metricName = strings.Replace(p.metricName, "service", "service_operation", 1)
 		p.metricDesc += " & operation"
 	}
-	promQuery := buildPromQuery(p)
+	promQuery := m.buildPromQuery(p)
 
 	span, ctx := startSpanForQuery(ctx, p.metricName, promQuery)
 	defer span.Finish()
@@ -237,7 +238,7 @@ func (m MetricsReader) executeQuery(ctx context.Context, p metricsQueryParams) (
 	)
 }
 
-func buildPromQuery(metricsParams metricsQueryParams) string {
+func (m MetricsReader) buildPromQuery(metricsParams metricsQueryParams) string {
 	groupBy := []string{"service_name"}
 	if metricsParams.GroupByOperation {
 		groupBy = append(groupBy, "operation")
@@ -257,7 +258,13 @@ func buildPromQuery(metricsParams metricsQueryParams) string {
 		rate:           promqlDurationString(metricsParams.RatePer),
 		groupBy:        strings.Join(groupBy, ","),
 	}
-	return metricsParams.buildPromQuery(promParams)
+
+	queryString := metricsParams.buildPromQuery(promParams)
+	m.logger.Debug("Querying prometheus",
+		zap.String("name", metricsParams.metricName),
+		zap.String("query", queryString),
+	)
+	return queryString
 }
 
 // promqlDurationString formats the duration string to be promQL-compliant.
