@@ -16,18 +16,29 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	jaegerClientConfig "github.com/uber/jaeger-client-go/config"
 	jaegerClientZapLog "github.com/uber/jaeger-client-go/log/zap"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	otelBridge "go.opentelemetry.io/otel/bridge/opentracing"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
+	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	_ "go.uber.org/automaxprocs"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	agentApp "github.com/jaegertracing/jaeger/cmd/agent/app"
 	agentRep "github.com/jaegertracing/jaeger/cmd/agent/app/reporter"
@@ -273,7 +284,26 @@ func startQuery(
 ) *queryApp.Server {
 	spanReader = storageMetrics.NewReadMetricsDecorator(spanReader, baseFactory.Namespace(metrics.NSOptions{Name: "query"}))
 	qs := querysvc.NewQueryService(spanReader, depReader, *queryOpts)
-	server, err := queryApp.NewServer(svc.Logger, qs, metricsQueryService, qOpts, tm, opentracing.GlobalTracer())
+
+	ctx := context.Background()
+	exp, err := newExporter(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tp := trace.NewTracerProvider(
+		trace.WithBatcher(exp),
+		trace.WithResource(newResource()),
+	)
+
+	otelTracer := tp.Tracer("tracer_name")
+	// Use the bridgeTracer as your OpenTracing tracer.
+	bridgeTracer, wrapperTracerProvider := otelBridge.NewTracerPair(otelTracer)
+	// Set the wrapperTracerProvider as the global OpenTelemetry
+	// TracerProvider so instrumentation will use it by default.
+	otel.SetTracerProvider(wrapperTracerProvider)
+
+	server, err := queryApp.NewServer(svc.Logger, qs, metricsQueryService, qOpts, tm, bridgeTracer)
 	if err != nil {
 		svc.Logger.Fatal("Could not start jaeger-query service", zap.Error(err))
 	}
@@ -286,6 +316,41 @@ func startQuery(
 		svc.Logger.Fatal("Could not start jaeger-query service", zap.Error(err))
 	}
 	return server
+}
+
+// newExporter returns a console exporter.
+func newExporter(ctx context.Context) (trace.SpanExporter, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	conn, err := grpc.DialContext(ctx, "otel_collector:4318",
+		// Note the use of insecure transport here. TLS is recommended in production.
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gRPC connection to collector: %w", err)
+	}
+
+	// Set up a trace exporter
+	traceExporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
+	}
+	return traceExporter, nil
+}
+
+// newResource returns a resource describing this application.
+func newResource() *resource.Resource {
+	r, _ := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceName("fib"),
+			semconv.ServiceVersion("v0.1.0"),
+			attribute.String("environment", "demo"),
+		),
+	)
+	return r
 }
 
 func initTracer(svc *flags.Service) io.Closer {
