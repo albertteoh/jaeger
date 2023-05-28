@@ -16,6 +16,8 @@ services:
       - PROMETHEUS_QUERY_DURATION_UNIT=${PROMETHEUS_QUERY_DURATION_UNIT}
     ports:
       - "16686:16686"
+    depends_on:
+      - otel_collector
   otel_collector:
     networks:
       - backend
@@ -25,8 +27,6 @@ services:
     command: --config /etc/otelcol/otel-collector-config.yml
     ports:
       - "4317:4317"
-    depends_on:
-      - jaeger
   microsim:
     networks:
       - backend
