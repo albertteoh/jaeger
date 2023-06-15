@@ -22,6 +22,8 @@ import (
 	"math/rand"
 	"sync"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"go.uber.org/zap"
@@ -35,26 +37,32 @@ import (
 
 // Redis is a simulator of remote Redis cache
 type Redis struct {
-	tracer opentracing.Tracer // simulate redis as a separate process
+	tracer trace.Tracer // simulate redis as a separate process
 	logger log.Factory
 	errorSimulator
 }
 
 func newRedis(otelExporter string, metricsFactory metrics.Factory, logger log.Factory) *Redis {
 	return &Redis{
-		tracer: tracing.Init("redis", otelExporter, metricsFactory, logger),
+		tracer: tracing.InitOTEL("redis", otelExporter, metricsFactory, logger),
 		logger: logger,
 	}
 }
 
 // FindDriverIDs finds IDs of drivers who are near the location.
 func (r *Redis) FindDriverIDs(ctx context.Context, location string) []string {
-	if span := opentracing.SpanFromContext(ctx); span != nil {
-		span := r.tracer.StartSpan("FindDriverIDs", opentracing.ChildOf(span.Context()))
-		span.SetTag("param.location", location)
-		ext.SpanKindRPCClient.Set(span)
-		defer span.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span)
+	ctx, span := r.tracer.Start(ctx, "FindDriverIDs")
+	if span != nil {
+		_, span := r.tracer.Start(ctx, "FindDriverIDs" /*...set child of option*/)
+
+
+		// TODO: Set span attributes.
+		// span.SetTag("param.location", location)
+		span.SetAttributes(...)
+
+		// TODO: Set span kind
+		// ext.SpanKindRPCClient.Set(span)
+		defer span.End()
 	}
 	// simulate RPC delay
 	delay.Sleep(config.RedisFindDelay, config.RedisFindDelayStdDev)
@@ -70,6 +78,7 @@ func (r *Redis) FindDriverIDs(ctx context.Context, location string) []string {
 
 // GetDriver returns driver and the current car location
 func (r *Redis) GetDriver(ctx context.Context, driverID string) (Driver, error) {
+	// Do the same here...
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		span := r.tracer.StartSpan("GetDriver", opentracing.ChildOf(span.Context()))
 		span.SetTag("param.driverID", driverID)

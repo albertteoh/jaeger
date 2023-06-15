@@ -302,6 +302,7 @@ func startQuery(
 	// Set the wrapperTracerProvider as the global OpenTelemetry
 	// TracerProvider so instrumentation will use it by default.
 	otel.SetTracerProvider(wrapperTracerProvider)
+	opentracing.SetGlobalTracer(bridgeTracer)
 
 	server, err := queryApp.NewServer(svc.Logger, qs, metricsQueryService, qOpts, tm, bridgeTracer)
 	if err != nil {

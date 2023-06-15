@@ -23,6 +23,9 @@ import (
 	"sync"
 
 	"github.com/opentracing/opentracing-go"
+
+	"go.opentelemetry.io/otel/trace"
+
 	"go.opentelemetry.io/otel"
 	otbridge "go.opentelemetry.io/otel/bridge/opentracing"
 	"go.opentelemetry.io/otel/exporters/jaeger"
@@ -41,6 +44,44 @@ import (
 )
 
 var once sync.Once
+
+// InitOTEL initializes OpenTelemetry SDK and uses OTel-OpenTracing Bridge
+// to return an OpenTracing-compatible tracer.
+func InitOTEL(serviceName string, exporterType string, metricsFactory metrics.Factory, logger log.Factory) trace.Tracer {
+	once.Do(func() {
+		otel.SetTextMapPropagator(
+			propagation.NewCompositeTextMapPropagator(
+				propagation.TraceContext{},
+				propagation.Baggage{},
+			))
+	})
+
+	exp, err := createOtelExporter(exporterType)
+	if err != nil {
+		logger.Bg().Fatal("cannot create exporter", zap.String("exporterType", exporterType), zap.Error(err))
+	}
+	logger.Bg().Debug("using " + exporterType + " trace exporter")
+
+	rpcmetricsObserver := rpcmetrics.NewObserver(metricsFactory, rpcmetrics.DefaultNameNormalizer)
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exp),
+		sdktrace.WithSpanProcessor(rpcmetricsObserver),
+		sdktrace.WithResource(resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String(serviceName),
+		)),
+	)
+	_, otelTracerProvider := otbridge.NewTracerPair(tp.Tracer(""))
+	logger.Bg().Debug("created OTEL->OT bridge", zap.String("service-name", serviceName))
+	return otelTracerProvider.Tracer("my otel tracer")
+}
+
+// withSecure instructs the client to use HTTPS scheme, instead of hotrod's desired default HTTP
+func withSecure() bool {
+	return strings.HasPrefix(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), "https://") ||
+		strings.ToLower(os.Getenv("OTEL_EXPORTER_OTLP_INSECURE")) == "false"
+}
 
 // Init initializes OpenTelemetry SDK and uses OTel-OpenTracing Bridge
 // to return an OpenTracing-compatible tracer.
@@ -72,12 +113,6 @@ func Init(serviceName string, exporterType string, metricsFactory metrics.Factor
 	otTracer, _ := otbridge.NewTracerPair(tp.Tracer(""))
 	logger.Bg().Debug("created OTEL->OT bridge", zap.String("service-name", serviceName))
 	return otTracer
-}
-
-// withSecure instructs the client to use HTTPS scheme, instead of hotrod's desired default HTTP
-func withSecure() bool {
-	return strings.HasPrefix(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), "https://") ||
-		strings.ToLower(os.Getenv("OTEL_EXPORTER_OTLP_INSECURE")) == "false"
 }
 
 func createOtelExporter(exporterType string) (sdktrace.SpanExporter, error) {
