@@ -396,6 +396,7 @@ install-tools:
 	$(GO) install github.com/vektra/mockery/v2@v2.14.0
 	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.52.1
 	$(GO) install mvdan.cc/gofumpt@latest
+	$(GO) install golang.org/x/vuln/cmd/govulncheck@latest
 
 .PHONY: install-ci
 install-ci: install-tools
