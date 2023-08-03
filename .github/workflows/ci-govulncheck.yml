@@ -2,7 +2,7 @@ name: Build all-in-one
 
 on:
   push:
-    branches: [main]
+    branches: [main, add-govulncheck]
 
   pull_request:
     branches: [main]
