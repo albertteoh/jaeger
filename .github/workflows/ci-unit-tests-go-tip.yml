@@ -38,7 +38,7 @@ jobs:
       uses: EnricoMi/publish-unit-test-result-action@v2
       if: always()
       with:
-        check_name: Go Tip Unit Tests Summary
+        check_name: Unit Tests Summary
         junit_files: junit-report.xml
         # PR comments and check run will be performed by the "Unit Test Results" workflow.
         comment_mode: off
