@@ -15,6 +15,7 @@
 package jaeger
 
 import (
+	"github.com/stretchr/testify/require"
 	"testing"
 
 	"go.uber.org/goleak"
@@ -23,6 +24,7 @@ import (
 func TestDummy(t *testing.T) {
 	// This is a dummy test in the root package.
 	// Without it `go test -v .` prints "testing: warning: no tests to run".
+	require.FailNow(t, "Forcing failure")
 }
 
 func TestMain(m *testing.M) {
