@@ -23,6 +23,11 @@ from urllib.request import (
     urlopen,
     Request
 )
+from http import HTTPStatus
+from urllib.error import HTTPError
+
+
+import requests
 
 
 def eprint(*args, **kwargs):
@@ -33,7 +38,14 @@ def num_commits_since_prev_tag(token, base_url, branch, verbose):
     tags_url = f"{base_url}/tags"
     req = Request(tags_url)
     req.add_header("Authorization", f"token {token}")
-    tags = json.loads(urlopen(req).read())
+
+    try:
+        tags = json.loads(urlopen(req).read())
+    except HTTPError as e:
+        if e.code == HTTPStatus.UNAUTHORIZED:
+            print(f"failed to get tags: {e}. Check your GH access token is valid; to generate a new token: https://github.com/settings/personal-access-tokens/new")
+            exit(1)
+
     prev_release_tag = tags[0]['name']
     compare_url = f"{base_url}/compare/{branch}...{prev_release_tag}"
     req = Request(compare_url)
@@ -55,6 +67,7 @@ categories = [
     {'title': None, 'label': 'changelog:test'},
     {'title': None, 'label': 'changelog:skip'},
     {'title': None, 'label': 'changelog:dependencies'},
+    {'title': None, 'label': 'changelog:refactoring'},
 ]
 
 
