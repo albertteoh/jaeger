@@ -28,9 +28,9 @@ import (
 )
 
 // ClickHouse is always available as a storage backend and is selected through
-// configuration; no feature gate is required to enable it. The gate IDs below
-// remain registered as Stable only so that existing --feature-gates values keep
-// working (as no-ops) until they are removed in v2.23.0.
+// configuration; no feature gate is required to enable it. The gate ID below
+// remains registered as Stable only so that existing --feature-gates values keep
+// working (as a no-op) until it is removed in v2.23.0.
 var (
 	_ = featuregate.GlobalRegistry().MustRegister(
 		"jaeger.clickhouse",
